@@ -164,9 +164,18 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
                 });
             })(kdElem);
         }
+        for (var kgElem in keypadGamepadControlKeysElements) {
+            (function(localControl) {
+                jt.Util.onTapOrMouseDownWithBlock(self[localControl], function () {
+                    keyRedefinitionStart(localControl);
+                });
+            })(kgElem);
+        }
+        jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-input-keyboard"], function() { toggleKeypadInputMode("KEYBOARD"); });
+        jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-input-gamepad"], function() { toggleKeypadInputMode("GAMEPAD"); });
 
         // Controls Actions
-        jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-paddles-mode"], function() { consoleControls.togglePaddleMode(); });
+        jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-paddles-mode"], function() { consoleControls.cycleControllerMode(); });
         jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-p1-mode"], function() { consoleControls.toggleP1ControlsMode(); });
         jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-gamepads-mode"], function() { consoleControls.toggleGamepadMode(); });
         jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-defaults"], controlsDefaults);
@@ -179,11 +188,36 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
 
     function refreshPortsPage() {
         var paddlesMode = consoleControls.isPaddleMode();
+        var keypadMode = consoleControls.isKeypadMode();
         var p1Mode = consoleControls.isP1ControlsMode();
 
-        self["jt-ports-paddles-mode"].innerHTML = "Controllers: " + (paddlesMode ? "PADDLES" : "JOYSTICKS");
+        self["jt-ports-paddles-mode"].innerHTML = "Controllers: " + (paddlesMode ? "PADDLES" : keypadMode ? "KEYPAD" : "JOYSTICKS");
         self["jt-ports-p1-mode"].innerHTML = "Swap Mode: " + (p1Mode ? "SWAPPED" : "NORMAL");
         self["jt-ports-gamepads-mode"].innerHTML = "Gamepads: " + (consoleControls.getGamepadModeDesc());
+
+        // The Keyboard/Keypad Controller's own key assignments only matter
+        // (and only make sense to show at all) while it's actually the
+        // selected "Controllers:" mode - showing them unconditionally would
+        // suggest they're always in effect, when a plain digit keypress
+        // does nothing keypad-related at all outside this mode (see
+        // DOMConsoleControls' own initKeys, which skips binding them
+        // entirely otherwise). The reverse for the joystick/paddle diagram
+        // and its own key assignments below - hidden while Keypad mode is
+        // selected, both because they're equally inactive then (no
+        // joystick/paddle plugged in, in the "one peripheral per port at a
+        // time" sense every one of these modes already shares) and to free
+        // up the full page for all 12x2 keypad keys to actually fit without
+        // needing their own cramped scrolling sub-box - confirmed as a real
+        // reported problem when this section had to share the page with the
+        // joystick diagram instead.
+        self["jt-ports-keypad-section"].style.display = keypadMode ? "" : "none";
+        // Only the joystick/paddle DIAGRAM itself hides - the hotkey list
+        // and "Controllers:"/"Swap Mode:"/"Gamepads:" toggle buttons above
+        // it stay visible regardless of mode (they're global controls, not
+        // specific to whichever diagram happens to be showing - hiding them
+        // along with the diagram was a real reported bug: it hid the very
+        // button needed to switch OUT of Keypad mode again).
+        self["jt-ports-joystick-diagram"].style.display = keypadMode ? "none" : "";
 
         if (paddlesMode) {
             self["jt-control-p1-controller"].style.backgroundPositionY = "-91px";
@@ -243,6 +277,42 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
                 }
             }
         }
+
+        // Same rendering again, for the SAME 12x2 keys' gamepad button
+        // assignment (see keypadGamepadControlKeysElements' own comment) -
+        // a plain button index (a number, or -1 for "unassigned") instead
+        // of a {c,n} key object, otherwise the same shape.
+        var keypadGamepads = prefs.keypadGamepads;
+        for (var gpElem in keypadGamepadControlKeysElements) {
+            var gpElemNode = self[gpElem];
+            if (gpElem === controlRedefining) {
+                gpElemNode.classList.add("jt-redefining");
+                gpElemNode.classList.remove("jt-undefined");
+                gpElemNode.innerHTML = "?";
+            } else {
+                gpElemNode.classList.remove("jt-redefining");
+                var gpControlInfo = keypadGamepadControlKeysElements[gpElem];
+                var gpButtonIndex = keypadGamepads[gpControlInfo.player][gpControlInfo.control];
+                if (gpButtonIndex < 0) {
+                    gpElemNode.classList.add("jt-undefined");
+                    gpElemNode.innerHTML = "";
+                } else {
+                    gpElemNode.classList.remove("jt-undefined");
+                    gpElemNode.innerHTML = "" + gpButtonIndex;
+                }
+            }
+        }
+
+        // Only one of the keypad section's own two sub-views is ever shown
+        // at once (see keypadInputMode's own comment) - the modal simply
+        // isn't tall enough to show 24 keyboard AND 24 gamepad boxes at the
+        // same time without either overlapping the DEFAULTS/REVERT links
+        // below or needing its own cramped scrolling sub-box, both
+        // confirmed as real reported problems with earlier layouts here.
+        self["jt-keypad-keyboard-grids"].style.display = keypadInputMode === "KEYBOARD" ? "" : "none";
+        self["jt-keypad-gamepad-grids"].style.display = keypadInputMode === "GAMEPAD" ? "" : "none";
+        self["jt-keypad-input-keyboard"].style.textDecoration = keypadInputMode === "KEYBOARD" ? "underline" : "none";
+        self["jt-keypad-input-gamepad"].style.textDecoration = keypadInputMode === "GAMEPAD" ? "underline" : "none";
     }
 
     function processKeyEvent(e, press) {
@@ -257,11 +327,76 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
     var keyRedefinitionStart = function(control) {
         controlRedefining = control;
         refreshPortsPage();
+        if (keypadGamepadControlKeysElements[control]) startGamepadCapture();
     };
 
     var keyRedefinitonStop = function() {
         controlRedefining = null;
+        gamepadCaptureActive = false;
         refreshPortsPage();
+    };
+
+    // Gamepad buttons have no DOM keydown/keyup event of their own to hook
+    // (the Gamepad API is poll-only, see GamepadConsoleControls.js's own
+    // controlsClockPulse) - so redefining one has to actively poll
+    // navigator.getGamepads() itself, independent of the emulator's own
+    // clock (which may be paused, or simply not ticking gamepad reads at
+    // all if no game is running yet - this dialog needs to work either
+    // way). First poll only SEEDS the "already held" state without
+    // triggering anything - otherwise a button already held down from
+    // whatever the user was doing right before opening this box would
+    // immediately "redefine" it the instant polling starts, before they
+    // ever get a chance to press the ONE button they actually meant.
+    var gamepadCaptureActive = false;
+    var gamepadPollSeeded = false;
+    var gamepadPrevPressed = {};
+    var startGamepadCapture = function() {
+        gamepadCaptureActive = true;
+        gamepadPollSeeded = false;
+        gamepadPrevPressed = {};
+        requestAnimationFrame(gamepadCapturePoll);
+    };
+    var gamepadCapturePoll = function() {
+        if (!gamepadCaptureActive) return;
+        var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for (var i = 0; i < pads.length; i++) {
+            var pad = pads[i];
+            if (!pad) continue;
+            for (var b = 0; b < pad.buttons.length; b++) {
+                var key = i + ":" + b;
+                var pressed = pad.buttons[b].pressed || pad.buttons[b].value > 0.5;
+                if (gamepadPollSeeded && pressed && !gamepadPrevPressed[key]) {
+                    gamepadRedefinitionTry(b);
+                    return;
+                }
+                gamepadPrevPressed[key] = pressed;
+            }
+        }
+        gamepadPollSeeded = true;
+        if (gamepadCaptureActive) requestAnimationFrame(gamepadCapturePoll);
+    };
+
+    // Same "clear this assignment away from every other key first" safety
+    // as clearKeyEverywhere, scoped to prefs.keypadGamepads only - a
+    // gamepad button index has no meaningful overlap with a KEYBOARD key
+    // code the way clearKeyEverywhere's own cross-map check needs (they're
+    // different numbering spaces entirely, a gamepad button 1 and a
+    // keyboard keyCode 1 don't mean or collide with each other), so this
+    // doesn't need to touch controlKeysElements/keypadControlKeysElements
+    // at all.
+    var gamepadRedefinitionTry = function (buttonIndex) {
+        if (!controlRedefining) return;
+        var info = keypadGamepadControlKeysElements[controlRedefining];
+        if (!info) return;
+        for (var con in keypadGamepadControlKeysElements) {
+            if (con === controlRedefining) continue;
+            var otherInfo = keypadGamepadControlKeysElements[con];
+            if (prefs.keypadGamepads[otherInfo.player][otherInfo.control] === buttonIndex)
+                prefs.keypadGamepads[otherInfo.player][otherInfo.control] = -1;
+        }
+        prefs.keypadGamepads[info.player][info.control] = buttonIndex;
+        Javatari.userPreferences.setDirty();
+        keyRedefinitonStop();
     };
 
     // Shared by both controlKeysElements (joystick) and
@@ -315,7 +450,13 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
     var controlsDefaults = function () {
         Javatari.userPreferences.setDefaultJoystickKeys();
         Javatari.userPreferences.setDefaultKeypadKeys();
+        Javatari.userPreferences.setDefaultKeypadGamepads();
         keyRedefinitonStop();   // will refresh
+    };
+
+    var toggleKeypadInputMode = function(mode) {
+        keypadInputMode = mode;
+        keyRedefinitonStop();   // cancels any in-progress redefinition and refreshes
     };
 
     var controlsRevert = function () {
@@ -357,8 +498,28 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
         }
     }
 
+    // Same shape again, for the SAME 12 keys' gamepad button assignment
+    // (prefs.keypadGamepads - a plain gamepad.buttons index per key, see
+    // GamepadConsoleControls.js's own updateKeypad) - a real Keyboard/
+    // Keypad Controller is at least as often connected through a gamepad-
+    // shaped USB adapter as an actual keyboard, so both need to be
+    // reachable from here, not just the keyboard side.
+    var keypadGamepadControlKeysElements = {};
+    for (var kgp = 0; kgp < 2; kgp++) {
+        for (var kgk = 1; kgk <= 12; kgk++) {
+            keypadGamepadControlKeysElements["jt-keypad-gp" + kgp + "-k" + kgk] = { player: kgp, control: "k" + kgk };
+        }
+    }
+
 
     var controlRedefining = null;
+    // Which of the keypad section's own two sub-views (keyboard key boxes
+    // vs gamepad button-number boxes) is currently showing - purely a
+    // Settings-dialog display choice (see refreshPortsPage), not a runtime
+    // behavior toggle: both keyboard AND gamepad input stay simultaneously
+    // live at all times whenever Keypad mode itself is on, regardless of
+    // which one happens to be visible here.
+    var keypadInputMode = "KEYBOARD";
 
     var modal;
     var page = "CONSOLE";

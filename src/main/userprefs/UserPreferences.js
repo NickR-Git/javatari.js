@@ -58,6 +58,25 @@ Javatari.userPreferences.defaults = function() {
             }
         ],
 
+        // Same idea as keypadKeys above, for a gamepad-shaped Keyboard/
+        // Keypad Controller USB adapter (see GamepadConsoleControls.js's own
+        // updateKeypad) - which of the connected gamepad's own buttons
+        // drives which of the 12 keypad keys, remappable the same way (see
+        // Settings.js's own gamepadKeypadRedefinitionTry). Defaults to a
+        // straight 1:1 (button N drives key N) for both ports - an
+        // assumption about a "typical" adapter's own button ordering, not a
+        // guarantee; a real device that orders its buttons differently
+        // needs remapping here regardless of what the defaults say.
+        keypadGamepads: [
+            {
+                k1: 1, k2: 2, k3: 3, k4: 4, k5: 5, k6: 6,
+                k7: 7, k8: 8, k9: 9, k10: 10, k11: 11, k12: 12
+            }, {
+                k1: 1, k2: 2, k3: 3, k4: 4, k5: 5, k6: 6,
+                k7: 7, k8: 8, k9: 9, k10: 10, k11: 11, k12: 12
+            }
+        ],
+
         joystickGamepads: [
             {
                 button:        0,
@@ -190,6 +209,11 @@ Javatari.userPreferences.setDefaultJoystickKeys = function() {
 
 Javatari.userPreferences.setDefaultKeypadKeys = function() {
     Javatari.userPreferences.current.keypadKeys = Javatari.userPreferences.defaults().keypadKeys;
+    Javatari.userPreferences.setDirty();
+};
+
+Javatari.userPreferences.setDefaultKeypadGamepads = function() {
+    Javatari.userPreferences.current.keypadGamepads = Javatari.userPreferences.defaults().keypadGamepads;
     Javatari.userPreferences.setDirty();
 };
 

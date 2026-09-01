@@ -168,21 +168,26 @@ jt.GamepadConsoleControls = function(consoleControls) {
         jt.ConsoleControls.KEYPAD1_KEY_10, jt.ConsoleControls.KEYPAD1_KEY_11, jt.ConsoleControls.KEYPAD1_KEY_12,
     ];
 
-    // Reads gamepad.buttons[1..12] (NOT [0..11] - the adapter's own 12
-    // keypad keys are physical/logical buttons 1-12, leaving button 0 for
-    // something else entirely) straight through as the 12 physical keypad
-    // keys, numbered the same 1,2,3/4,5,6/7,8,9/*,0,# reading order every
-    // other keypad key source (ConsoleControls' own constants,
-    // DOMConsoleControls' keyboard mapping) already uses - button N (1-12)
-    // drives key N. joyPrefs.player (already resolved for the P1 Controls
-    // swap by applyPreferences below) decides which PHYSICAL Atari port
-    // this gamepad's keys reach, same as every other control this file
-    // already routes through joyPrefs.player.
+    // Reads whichever gamepad.buttons[N] index prefs.keypadGamepads assigns
+    // each of the 12 physical keypad keys to (remappable the same way
+    // prefs.keypadKeys' own keyboard mapping is - see Settings.js's own
+    // gamepadRedefinitionTry), numbered the same 1,2,3/4,5,6/7,8,9/*,0,#
+    // reading order every other keypad key source (ConsoleControls' own
+    // constants, DOMConsoleControls' keyboard mapping) already uses.
+    // Defaults to a straight 1:1 (button N drives key N, button 0 unused) -
+    // an assumption about a "typical" adapter's own button ordering, not a
+    // guarantee; a real device that orders its buttons differently needs
+    // remapping here regardless of what the defaults say. joyPrefs.player
+    // (already resolved for the P1 Controls swap by applyPreferences below)
+    // decides which PHYSICAL Atari port this gamepad's keys reach, same as
+    // every other control this file already routes through joyPrefs.player.
     var updateKeypad = function(joystick, joyState, joyPrefs) {
         var keys = joyPrefs.player ? KEYPAD1_KEYS : KEYPAD0_KEYS;
         var state = joyPrefs.player ? joyState.keypad1 : joyState.keypad0;
+        var buttonAssignments = prefs.keypadGamepads[joyPrefs.player ? 1 : 0];
         for (var i = 0; i < 12; i++) {
-            var pressed = joystick.getButtonDigital(i + 1);
+            var buttonIndex = buttonAssignments["k" + (i + 1)];
+            var pressed = buttonIndex >= 0 && joystick.getButtonDigital(buttonIndex);
             if (pressed !== state[i]) {
                 consoleControls.processControlState(keys[i], pressed);
                 state[i] = pressed;

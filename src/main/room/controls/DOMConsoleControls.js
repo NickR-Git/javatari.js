@@ -84,16 +84,41 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         fireModeStateUpdate();
     };
 
-    // Keyboard/Keypad Controller mode for a gamepad-shaped USB adapter (see
-    // GamepadConsoleControls' own setKeypadMode comment) - the keyboard-key
-    // mapping (KEYPAD_KEYS in initKeys below) is always active regardless,
-    // since a real physical keyboard press never collides with anything
-    // else this app already binds to those same plain digit keys, but a
-    // GAMEPAD's buttons 0-11 DO collide with this app's own default
-    // joystick/select/reset/pause button assignments, so that side needs an
-    // explicit on/off switch.
+    // Third "Controllers:" mode, alongside Joysticks/Paddles above - see
+    // setKeypadMode below and its own "Controllers:" button in the Settings
+    // dialog's own CONTROLLERS tab (jt-ports-controller-mode in
+    // Settings.js), which cycles through all three via cycleControllerMode.
+    this.toggleKeypadMode = function() {
+        setKeypadModeInternal(!keypadMode, true);
+        fireModeStateUpdate();
+    };
+
+    this.isKeypadMode = function() {
+        return keypadMode;
+    };
+
+    // Cycles Joysticks -> Paddles -> Keypad -> Joysticks, all through the
+    // SAME "Controllers:" button/label every mode already shares - the
+    // three are mutually exclusive (setPaddleMode/setKeypadModeInternal
+    // below each already turn the other off), so there's always exactly
+    // one unambiguous "next" mode regardless of which one is currently
+    // active.
+    this.cycleControllerMode = function() {
+        if (paddleMode) setKeypadModeInternal(true, true);
+        else if (keypadMode) { setPaddleMode(false, false); setKeypadModeInternal(false, true); }
+        else setPaddleMode(true, true);
+        fireModeStateUpdate();
+    };
+
+    // Keyboard/Keypad Controller mode - see setKeypadModeInternal below.
+    // Named distinctly from the internal setter (not just "this.setKeypadMode
+    // = setKeypadModeInternal" directly) so an external caller that already
+    // knows it wants keypad mode on/off (e.g. VCS Game Maker's own rom.js,
+    // right after loading a ROM that does or doesn't use keypad blocks)
+    // never needs to pass the OSD flag itself - showOSD only makes sense
+    // for an interactive UI action, not an automatic, build-triggered one.
     this.setKeypadMode = function(state) {
-        gamepadControls.setKeypadMode(state);
+        setKeypadModeInternal(state, false);
     };
 
     this.isPaddleMode = function() {
@@ -374,6 +399,12 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
     var setPaddleMode = function(mode, showOSD) {
         if (paddleMode !== mode) self.releaseControllers();
         paddleMode = mode;
+        // Mutually exclusive with Keypad mode - real hardware only ever has
+        // one peripheral plugged into a port at a time. Silent (no OSD/
+        // fireModeStateUpdate of its own - the caller enabling paddle mode
+        // already fires its own), just keeps the two flags consistent with
+        // each other.
+        if (mode && keypadMode) setKeypadModeInternal(false, false);
         paddle0Speed = paddle1Speed = 2;
         paddle0Position = paddle1Position = (paddleMode ? 190 : -1);	// -1 = disconnected, won't charge POTs
         // Only send Paddles connection reset when not in NetPlay Client mode
@@ -385,8 +416,35 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         if (showOSD) showModeOSD();
     };
 
+    // Keyboard/Keypad Controller mode - unlike paddle mode, this needs no
+    // TIA-facing plumbing of its own here (Tia.js's own setKeypadMode,
+    // called separately - see AtariConsole.setKeypadMode - owns the actual
+    // INPT0-5 protocol emulation); this side only owns which PHYSICAL INPUT
+    // SOURCES currently feed the 12 keypad keys:
+    //  - the keyboard mapping in initKeys() below, gated on this flag so a
+    //    project that never asked for it can't have its plain 1-9/0/-/=
+    //    keys silently doing something unexpected;
+    //  - the gamepad mapping in GamepadConsoleControls' own updateKeypad,
+    //    toggled via gamepadControls.setKeypadMode below, needed there (and
+    //    not needed here for the keyboard side) specifically because a
+    //    gamepad's raw button indices collide with this app's own default
+    //    joystick/select/reset/pause button assignments - a keyboard press
+    //    on a plain digit key never collided with anything else to begin
+    //    with, so gating it is purely about not surprising a project that
+    //    never uses the Keypad Controller at all, not about avoiding a real
+    //    conflict.
+    var setKeypadModeInternal = function(mode, showOSD) {
+        if (keypadMode !== mode) self.releaseControllers();
+        keypadMode = mode;
+        if (mode && paddleMode) setPaddleMode(false, false);
+        gamepadControls.setKeypadMode(keypadMode);
+        initKeys();
+        if (showOSD) showModeOSD();
+    };
+
     var showModeOSD = function() {
-        screen.showOSD("Controllers: " + (paddleMode ? "Paddles" : "Joysticks") + (p1ControlsMode ? ", Swapped" : ""), true);
+        var modeDesc = paddleMode ? "Paddles" : keypadMode ? "Keypad" : "Joysticks";
+        screen.showOSD("Controllers: " + modeDesc + (p1ControlsMode ? ", Swapped" : ""), true);
     };
 
     function fireModeStateUpdate() {
@@ -567,9 +625,14 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         turboKeyCodeMap[prefs.joystickKeys[a].buttonT.c] = cc.JOY0_BUTTON;
         turboKeyCodeMap[prefs.joystickKeys[b].buttonT.c] = cc.JOY1_BUTTON;
 
-        // Keyboard/Keypad Controller - remappable the same way joystick keys
-        // above are (see prefs.keypadKeys' own comment in UserPreferences.js
-        // and Settings.js's own keyRedefinitionTry), read in the SAME
+        // Keyboard/Keypad Controller - only bound at all while keypadMode is
+        // actually on (see setKeypadModeInternal, which re-runs initKeys()
+        // itself the moment this flag changes either way) - a project that
+        // never selects the Keypad Controller as its own "Controllers:"
+        // mode never has its plain 1-9/0/-/= keys doing anything keypad-
+        // related at all. Remappable the same way joystick keys above are
+        // (see prefs.keypadKeys' own comment in UserPreferences.js and
+        // Settings.js's own keyRedefinitionTry), read in the SAME
         // 1,2,3/4,5,6/7,8,9/*,0,# order ConsoleControls' own KEYPAD0_KEY_N
         // numbering documents. Bound to KEYPAD${a}_KEY_* (not always
         // KEYPAD0_*) so P1 Controls Mode's existing left/right swap (the
@@ -580,6 +643,7 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         // keyCodeMap[-1] would otherwise claim that slot and swallow every
         // OTHER as-yet-unbound key redefinition attempt in Settings' own
         // "press a key" flow.
+        if (!keypadMode) return;
         var KEYPAD_A_CONTROLS = [
             cc.KEYPAD0_KEY_1, cc.KEYPAD0_KEY_2, cc.KEYPAD0_KEY_3, cc.KEYPAD0_KEY_4,
             cc.KEYPAD0_KEY_5, cc.KEYPAD0_KEY_6, cc.KEYPAD0_KEY_7, cc.KEYPAD0_KEY_8,
@@ -647,6 +711,7 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
 
     var p1ControlsMode = false;
     var paddleMode = false;
+    var keypadMode = false;
 
     var hapticFeedbackCapable = !!navigator.vibrate;
     var hapticFeedbackEnabled = hapticFeedbackCapable && !!prefs.hapticFeedback;
