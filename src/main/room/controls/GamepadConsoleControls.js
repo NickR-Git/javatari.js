@@ -49,6 +49,24 @@ jt.GamepadConsoleControls = function(consoleControls) {
         joy0State.xPosition = joy1State.xPosition = -1;
     };
 
+    // Keyboard/Keypad Controller support for a gamepad-shaped adapter (a
+    // common way real Atari Keyboard/Keypad Controllers get connected to a
+    // modern computer at all - a USB adapter exposing the controller's own
+    // 12 keys as plain HID gamepad buttons 0-11, NOT as keyboard keys, so
+    // DOMConsoleControls' own keyboard-based mapping never sees them). When
+    // on, update() below reads gamepad.buttons[0..11] directly as the 12
+    // keypad keys instead of the normal joystick direction/button/select/
+    // reset/pause/speed handling - without this, those SAME 12 raw buttons
+    // fall through to whatever this codebase's own default gamepad button
+    // preferences assign them (confirmed as a real reported bug: a 12-button
+    // Atari-keypad-to-USB-gamepad adapter's buttons 9 and 10 collided with
+    // the default SELECT/RESET button indices, toggling console switches
+    // and pausing the game instead of registering as keypad key presses).
+    this.setKeypadMode = function(state) {
+        if (!supported) return;
+        keypadMode = state;
+    };
+
     this.setP1ControlsMode = function(state) {
         p1ControlsMode = state;
         this.applyPreferences();
@@ -118,7 +136,51 @@ jt.GamepadConsoleControls = function(consoleControls) {
         joy1State = newControllerState();
     };
 
+    // jt.ConsoleControls directly (NOT the local "controls" alias below) -
+    // this runs as this whole file's own top-level code, before "var
+    // controls = jt.ConsoleControls;" (declared further down) has actually
+    // been assigned yet, even though its declaration is hoisted (confirmed
+    // directly as a real "Cannot read properties of undefined (reading
+    // 'KEYPAD0_KEY_1')" crash on load otherwise) - jt.ConsoleControls
+    // itself is already fully populated by this point regardless, since
+    // ConsoleControls.js loads first.
+    var KEYPAD0_KEYS = [
+        jt.ConsoleControls.KEYPAD0_KEY_1, jt.ConsoleControls.KEYPAD0_KEY_2, jt.ConsoleControls.KEYPAD0_KEY_3,
+        jt.ConsoleControls.KEYPAD0_KEY_4, jt.ConsoleControls.KEYPAD0_KEY_5, jt.ConsoleControls.KEYPAD0_KEY_6,
+        jt.ConsoleControls.KEYPAD0_KEY_7, jt.ConsoleControls.KEYPAD0_KEY_8, jt.ConsoleControls.KEYPAD0_KEY_9,
+        jt.ConsoleControls.KEYPAD0_KEY_10, jt.ConsoleControls.KEYPAD0_KEY_11, jt.ConsoleControls.KEYPAD0_KEY_12,
+    ];
+    var KEYPAD1_KEYS = [
+        jt.ConsoleControls.KEYPAD1_KEY_1, jt.ConsoleControls.KEYPAD1_KEY_2, jt.ConsoleControls.KEYPAD1_KEY_3,
+        jt.ConsoleControls.KEYPAD1_KEY_4, jt.ConsoleControls.KEYPAD1_KEY_5, jt.ConsoleControls.KEYPAD1_KEY_6,
+        jt.ConsoleControls.KEYPAD1_KEY_7, jt.ConsoleControls.KEYPAD1_KEY_8, jt.ConsoleControls.KEYPAD1_KEY_9,
+        jt.ConsoleControls.KEYPAD1_KEY_10, jt.ConsoleControls.KEYPAD1_KEY_11, jt.ConsoleControls.KEYPAD1_KEY_12,
+    ];
+
+    // Reads gamepad.buttons[1..12] (NOT [0..11] - the adapter's own 12
+    // keypad keys are physical/logical buttons 1-12, leaving button 0 for
+    // something else entirely) straight through as the 12 physical keypad
+    // keys, numbered the same 1,2,3/4,5,6/7,8,9/*,0,# reading order every
+    // other keypad key source (ConsoleControls' own constants,
+    // DOMConsoleControls' keyboard mapping) already uses - button N (1-12)
+    // drives key N. joyPrefs.player (already resolved for the P1 Controls
+    // swap by applyPreferences below) decides which PHYSICAL Atari port
+    // this gamepad's keys reach, same as every other control this file
+    // already routes through joyPrefs.player.
+    var updateKeypad = function(joystick, joyState, joyPrefs) {
+        var keys = joyPrefs.player ? KEYPAD1_KEYS : KEYPAD0_KEYS;
+        var state = joyPrefs.player ? joyState.keypad1 : joyState.keypad0;
+        for (var i = 0; i < 12; i++) {
+            var pressed = joystick.getButtonDigital(i + 1);
+            if (pressed !== state[i]) {
+                consoleControls.processControlState(keys[i], pressed);
+                state[i] = pressed;
+            }
+        }
+    };
+
     var update = function (joystick, joyState, joyPrefs, joyKeys) {
+        if (keypadMode) { updateKeypad(joystick, joyState, joyPrefs); return; }
         // Paddle Analog
         if (paddleMode && joyPrefs.paddleSens !== 0) {
             var newPosition = joystick.getPaddlePosition();
@@ -193,7 +255,8 @@ jt.GamepadConsoleControls = function(consoleControls) {
         return {
             direction: -1,         // CENTER
             button: false, buttonT: false, select: false, reset: false, fastSpeed: false, pause: false,
-            xPosition: -1          // PADDLE POSITION
+            xPosition: -1,         // PADDLE POSITION
+            keypad0: new Array(12), keypad1: new Array(12)     // Keyboard/Keypad Controller button states, see updateKeypad
         }
     };
 
@@ -226,6 +289,7 @@ jt.GamepadConsoleControls = function(consoleControls) {
 
     var mode = -1;
     var paddleMode = false;
+    var keypadMode = false;
     var swappedMode = false;
     var p1ControlsMode = false;
 

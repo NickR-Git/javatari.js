@@ -84,6 +84,18 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         fireModeStateUpdate();
     };
 
+    // Keyboard/Keypad Controller mode for a gamepad-shaped USB adapter (see
+    // GamepadConsoleControls' own setKeypadMode comment) - the keyboard-key
+    // mapping (KEYPAD_KEYS in initKeys below) is always active regardless,
+    // since a real physical keyboard press never collides with anything
+    // else this app already binds to those same plain digit keys, but a
+    // GAMEPAD's buttons 0-11 DO collide with this app's own default
+    // joystick/select/reset/pause button assignments, so that side needs an
+    // explicit on/off switch.
+    this.setKeypadMode = function(state) {
+        gamepadControls.setKeypadMode(state);
+    };
+
     this.isPaddleMode = function() {
         return paddleMode;
     };
