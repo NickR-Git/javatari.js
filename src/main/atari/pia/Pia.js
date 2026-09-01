@@ -22,7 +22,7 @@ jt.Pia = function() {
         var reg = address & ADDRESS_MASK;
 
         if (reg === 0x04 || reg === 0x06) { readFromINTIM(); return INTIM; }
-        if (reg === 0x00) return SWCHA;
+        if (reg === 0x00) return effectiveSWCHA();
         if (reg === 0x02) return SWCHB;
         if (reg === 0x01) return SWACNT;
         if (reg === 0x03) return SWBCNT;
@@ -41,8 +41,20 @@ jt.Pia = function() {
         if (reg === 0x07) { T1024T = i; setTimerInterval(i, 1024); return; }
         if (reg === 0x02) { swchbWrite(i); return; }
         if (reg === 0x03) { SWBCNT = i; debugInfo(">>>> Ineffective Write to PIA SWBCNT: " + i); return; }
-        if (reg === 0x00) { debugInfo(">>>> Unsupported Write to PIA SWCHA: " + i); return; }	// Output to controllers not supported
-        if (reg === 0x01) { debugInfo(">>>> Unsupported Write to PIA SWACNT " + i); return; }	// SWACNT configuration not supported
+        // Real bidirectional Port A I/O: SWCHA_OUT is the CPU's own output
+        // latch, only actually driven onto whichever bits SWACNT has
+        // configured as outputs (see effectiveSWCHA below) - any bit still
+        // configured as an input keeps reflecting the connected peripheral
+        // (the joystick-driven SWCHA var below), completely unaffected by
+        // this write, same as real 6532 PIA hardware. Needed for anything
+        // that drives its own controller port lines and reads them back
+        // (e.g. the Keyboard/Keypad Controller's column-scan protocol,
+        // which writes SWCHA to select a column then reads INPT0-5 to sense
+        // which row got shorted) - previously a no-op here made that
+        // protocol impossible to emulate at all, regardless of how INPT0-5
+        // themselves were modeled.
+        if (reg === 0x00) { SWCHA_OUT = i; return; }
+        if (reg === 0x01) { SWACNT = i; return; }
 
         // debugInfo(String.format("Invalid PIA write register address: %04x value %d", address, b));
         return 0;
@@ -76,6 +88,22 @@ jt.Pia = function() {
         // Only bits 2, 4 and 5 can be written
         SWCHB = (SWCHB & 0xcb) | (val & 34);
     };
+
+    // Port A's real, per-bit effective value: whichever bits SWACNT marks as
+    // outputs (1) read back the CPU's own last write (SWCHA_OUT); every
+    // other bit (still configured as an input) reads the connected
+    // peripheral's own state (SWCHA, written by controlStateChanged below -
+    // joystick switches, or left at its default 0xff/"nothing pressed" bit
+    // pattern when no peripheral drives that specific bit at all). Matches
+    // real 6532 PIA behavior; with SWACNT still at its power-on default of
+    // 0 (every bit an input), this reduces to exactly "return SWCHA" - the
+    // ONLY behavior this ever had before, so nothing changes for a game
+    // that never touches SWACNT/SWCHA writes at all (the overwhelming
+    // majority of titles).
+    var effectiveSWCHA = function() {
+        return ((SWCHA_OUT & SWACNT) | (SWCHA & ~SWACNT)) & 0xff;
+    };
+    this.getSWCHA = effectiveSWCHA;
 
     var debugInfo = function(str) {
         if (self.debug)
@@ -132,6 +160,7 @@ jt.Pia = function() {
             c:          currentTimerInterval,
             l:          lastSetTimerInterval,
             SA:         SWCHA,
+            SAO:        SWCHA_OUT,
             SAC:        SWACNT,
             SB:         SWCHB,
             SBC:        SWBCNT,
@@ -149,7 +178,12 @@ jt.Pia = function() {
         currentTimerInterval = state.c;
         lastSetTimerInterval = state.l;
         // SWCHA           	 = state.SA;			// Do not load controls state
-        SWACNT               = state.SAC;
+        // SWCHA_OUT is the CPU's own output latch though (not peripheral
+        // state), so it DOES need loading, same as any other CPU-facing
+        // register - falls back to the all-input-safe 0xff default for a
+        // savestate written before this field existed.
+        SWCHA_OUT             = state.SAO !== undefined ? state.SAO : 0xff;
+        SWACNT                = state.SAC;
         SWCHB                = state.SB;
         SWBCNT               = state.SBC;
         INTIM                = state.IT;
@@ -176,6 +210,7 @@ jt.Pia = function() {
 
     var SWCHA=      					// 11111111  Port A; input or output  (read or write)
         0xff;						    // All directions of both controllers OFF
+    var SWCHA_OUT = 0xff;               // 11111111  Port A CPU output latch - only visible on bits SWACNT marks as outputs, see effectiveSWCHA
     var SWACNT = 0;						// 11111111  Port A DDR, 0=input, 1=output
     var SWCHB = 						// 11..1.11  Port B; console switches (should be read only but unused bits can be written and read)
         0x0b;  						    // Reset OFF; Select OFF; B/W OFF; Difficult A/B OFF (Amateur)

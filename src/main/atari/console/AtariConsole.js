@@ -44,6 +44,23 @@ jt.AtariConsole = function(mainVideoClock) {
         isLoading = state;
     };
 
+    // Keyboard/Keypad Controller mode - see Tia.js's own setKeypadMode
+    // comment. Exposed here (not through the normal ConsoleControls
+    // dispatch path every OTHER control uses) since this is a peripheral
+    // CONFIGURATION choice, not a user input event of its own - same
+    // reasoning setVideoStandard below already follows for the video
+    // standard. A ROM/build pipeline that knows it needs a Keyboard
+    // Controller (e.g. VCS Game Maker's own bB "keypad" blocks) can call
+    // this directly right after loading its cartridge, same pattern as
+    // forcing NTSC.
+    this.setKeypadMode = function(state) {
+        tia.setKeypadMode(state);
+    };
+
+    this.isKeypadMode = function() {
+        return tia.isKeypadMode();
+    };
+
     this.userPause = function(pause, keepAudio) {
         var prev = userPaused;
         if (userPaused !== pause) {

@@ -115,12 +115,18 @@ jt.Tia = function(pCpu, pPia, audioSocket) {
             case 0x06: updateToClock(); return ((collisions & 0x0002) << 6);                                         // CXBLPF
             case 0x07: updateToClock(); return ((collisions & 0x8000) >> 8) | (collisions & 0x0040);                 // CXPPMM
 
-            case 0x08: return INPT0;
-            case 0x09: return INPT1;
-            case 0x0A: return INPT2;
-            case 0x0B: return INPT3;
-            case 0x0C: return INPT4;
-            case 0x0D: return INPT5;
+            // In Keypad mode, INPT0-5 are computed fresh on every read
+            // straight from the current SWCHA column-scan state instead of
+            // the normal paddle-capacitor/joystick-button values below - see
+            // computeKeypadInpt's own comment for why this is safe (and
+            // correct) to do without any capacitor-charge timing simulation
+            // of its own.
+            case 0x08: return keypadMode ? computeKeypadInpt(0, 0) : INPT0;
+            case 0x09: return keypadMode ? computeKeypadInpt(0, 1) : INPT1;
+            case 0x0A: return keypadMode ? computeKeypadInpt(1, 0) : INPT2;
+            case 0x0B: return keypadMode ? computeKeypadInpt(1, 1) : INPT3;
+            case 0x0C: return keypadMode ? computeKeypadInpt(0, 2) : INPT4;
+            case 0x0D: return keypadMode ? computeKeypadInpt(1, 2) : INPT5;
             default:   return 0;
         }
     };
@@ -1289,7 +1295,62 @@ jt.Tia = function(pCpu, pPia, audioSocket) {
 
     var controls = jt.ConsoleControls;
 
+    // Keyboard/Keypad Controller scan-protocol emulation - real hardware
+    // wiring: each port has 4 "column" lines (SWCHA bits 0-3 for port 0,
+    // bits 4-7 for port 1, driven LOW one at a time by the game's own code -
+    // see keypadpoll's own walking-zero SWCHA writes) and 3 "row" pins
+    // (INPT0/1/4 for port 0, INPT2/3/5 for port 1). Pressing a key shorts
+    // whichever column is currently driven low straight to that key's own
+    // row pin, forcing it low essentially instantly (a direct short, not a
+    // capacitor charging through any real resistance) - not pressed leaves
+    // that pin's own small, fixed pull-up to charge high, MUCH faster than
+    // a paddle's variable-resistance pot ever would (paddle games rely on
+    // that slow charge rate to sense ROTATION; a keypad's fixed resistor is
+    // sized by the original hardware specifically so it settles high well
+    // within the ~470-cycle window keypad-reading routines always wait
+    // before sampling). Computed fresh on every read (rather than modeled
+    // as a capacitor charging over emulated cycles, the way paddle0/1 below
+    // are) precisely because of that: the settled, final value is ALL any
+    // software still waiting out its own settle delay before reading ever
+    // actually observes, so recomputing it directly from "is the currently
+    // active column's key pressed right now" is exactly equivalent, without
+    // needing cycle-accurate charge-rate simulation to get there.
+    // keyIndex = column*3 + row (0-based) - matches vcs-game-maker's own
+    // "key N" numbering (1-based) read in the same physical scan order.
+    var computeKeypadInpt = function(port, rowIndex) {
+        var swcha = pia.getSWCHA();
+        var nibble = port === 0 ? (swcha & 0x0f) : ((swcha >> 4) & 0x0f);
+        var column = -1;
+        for (var b = 0; b < 4; b++) {
+            if (((nibble >> b) & 1) === 0) { column = b; break; }
+        }
+        if (column < 0) return 0x80;                                  // No column being scanned right now - reads as "not pressed"
+        var keys = port === 0 ? keypad0Keys : keypad1Keys;
+        return keys[column * 3 + rowIndex] ? 0x00 : 0x80;
+    };
+
+    // Enables/disables Keyboard/Keypad Controller emulation on BOTH ports
+    // at once (same single global toggle shape jt.DOMConsoleControls' own
+    // paddle mode already uses) - mutually exclusive with paddle mode and
+    // normal joystick buttons on the same physical pins, same as real
+    // hardware only ever having one peripheral plugged into a port.
+    this.setKeypadMode = function(state) {
+        keypadMode = !!state;
+    };
+
+    this.isKeypadMode = function() {
+        return keypadMode;
+    };
+
     this.controlStateChanged = function(control, state) {
+        if (control >= controls.KEYPAD0_KEY_1 && control <= controls.KEYPAD0_KEY_12) {
+            keypad0Keys[control - controls.KEYPAD0_KEY_1] = state;
+            return;
+        }
+        if (control >= controls.KEYPAD1_KEY_1 && control <= controls.KEYPAD1_KEY_12) {
+            keypad1Keys[control - controls.KEYPAD1_KEY_1] = state;
+            return;
+        }
         switch (control) {
             case controls.JOY0_BUTTON:
                 if (state) {
@@ -1418,6 +1479,8 @@ jt.Tia = function(pCpu, pPia, audioSocket) {
             pd1: paddle1Position,
             pd1c: paddle1CapacitorCharge,
 
+            kpm: keypadMode,
+
             CTRLPF: CTRLPF,
             COLUPF: COLUPF,
             COLUBK: COLUBK,
@@ -1542,6 +1605,7 @@ jt.Tia = function(pCpu, pPia, audioSocket) {
             paddle1Position = s.pd1;
             paddle1CapacitorCharge = s.pd1c;
         }
+        if (s.kpm !== undefined) keypadMode = s.kpm;
 
         CTRLPF = s.CTRLPF | 0;
         COLUPF = s.COLUPF | 0;
@@ -1688,6 +1752,17 @@ jt.Tia = function(pCpu, pPia, audioSocket) {
     var paddle0CapacitorCharge = 0;
     var paddle1Position = -1;
     var paddle1CapacitorCharge = 0;
+
+    // Keyboard/Keypad Controller - see computeKeypadInpt below for the real
+    // scan-protocol emulation. Mutually exclusive with paddles/joystick
+    // buttons on the same pins (INPT0,1,4 for port 0; INPT2,3,5 for port 1) -
+    // only one physical peripheral is ever plugged into a port at a time,
+    // same as real hardware, so keypadMode being on simply means "compute
+    // INPT0-5 as a keypad scan instead" rather than needing to disable
+    // anything else explicitly.
+    var keypadMode = false;
+    var keypad0Keys = new Array(12);                                          // Index i = key (i+1), see ConsoleControls' own KEYPAD0_KEY_N numbering
+    var keypad1Keys = new Array(12);
 
 
     var debug = false;

@@ -9,6 +9,23 @@ jt.ConsoleControls = {
     PADDLE0_BUTTON: 41, PADDLE1_BUTTON: 42,
     PADDLE0_POSITION: 16384, PADDLE1_POSITION: 16384 + 512,		    // Value controls (not press). Value will be from 380 (Left) to 190 (Center) to 0 (Right); -1 = disconnected, won't charge POTs
 
+    // Keyboard/Keypad Controller - 12 keys per port, numbered in the same
+    // reading order the real physical 3x4 grid is wired in: 1,2,3 / 4,5,6 /
+    // 7,8,9 / *,0,#, i.e. KEYPAD0_KEY_10 is "*", _11 is "0", _12 is "#" -
+    // matches vcs-game-maker's own KEYPAD_KEY_OPTIONS numbering exactly, so
+    // key N here is key N there. Port 0 and Port 1 are two independent
+    // physical peripherals, same as JOY0_*/JOY1_* above - which physical
+    // keyboard keys drive which port is purely a DOMConsoleControls mapping
+    // choice, same as joystick keys.
+    KEYPAD0_KEY_1: 61, KEYPAD0_KEY_2: 62, KEYPAD0_KEY_3: 63,
+    KEYPAD0_KEY_4: 64, KEYPAD0_KEY_5: 65, KEYPAD0_KEY_6: 66,
+    KEYPAD0_KEY_7: 67, KEYPAD0_KEY_8: 68, KEYPAD0_KEY_9: 69,
+    KEYPAD0_KEY_10: 70, KEYPAD0_KEY_11: 71, KEYPAD0_KEY_12: 72,
+    KEYPAD1_KEY_1: 73, KEYPAD1_KEY_2: 74, KEYPAD1_KEY_3: 75,
+    KEYPAD1_KEY_4: 76, KEYPAD1_KEY_5: 77, KEYPAD1_KEY_6: 78,
+    KEYPAD1_KEY_7: 79, KEYPAD1_KEY_8: 80, KEYPAD1_KEY_9: 81,
+    KEYPAD1_KEY_10: 82, KEYPAD1_KEY_11: 83, KEYPAD1_KEY_12: 84,
+
     POWER: 51, BLACK_WHITE: 52, SELECT: 53, RESET: 54,
     DIFFICULTY0: 55, DIFFICULTY1: 56,
     POWER_OFF: 57, POWER_FRY: 58,
