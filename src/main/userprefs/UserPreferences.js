@@ -30,15 +30,58 @@ Javatari.userPreferences.defaults = function() {
             }
         ],
 
+        // Keyboard/Keypad Controller - 12 keys per port, numbered the same
+        // 1,2,3/4,5,6/7,8,9/*,0,# reading order ConsoleControls' own
+        // KEYPAD0_KEY_N/KEYPAD1_KEY_N constants document, same array shape
+        // (index 0 = Player 1's own keys, index 1 = Player 2's, subject to
+        // the same P1 Controls swap every other per-player preference here
+        // already goes through) and same remapping mechanism (see Settings.js's
+        // own keyRedefinitionTry) as joystickKeys above - just 12 keys
+        // instead of 4 directions + 2 buttons. Player 1 defaults to the
+        // plain top-row number keys (free to bind here: every existing use
+        // of these same physical keys elsewhere in this file requires
+        // CONTROL or ALT); Player 2 defaults to the numeric keypad, since a
+        // second physical Keyboard/Keypad Controller is far more likely to
+        // be operated from there than by fighting Player 1 for the same
+        // top-row keys.
+        keypadKeys: [
+            {
+                k1: k.VK_1, k2: k.VK_2, k3: k.VK_3,
+                k4: k.VK_4, k5: k.VK_5, k6: k.VK_6,
+                k7: k.VK_7, k8: k.VK_8, k9: k.VK_9,
+                k10: k.VK_MINUS, k11: k.VK_0, k12: k.VK_EQUALS
+            }, {
+                k1: k.VK_NUM_1, k2: k.VK_NUM_2, k3: k.VK_NUM_3,
+                k4: k.VK_NUM_4, k5: k.VK_NUM_5, k6: k.VK_NUM_6,
+                k7: k.VK_NUM_7, k8: k.VK_NUM_8, k9: k.VK_NUM_9,
+                k10: k.VK_NUM_MULTIPLY, k11: k.VK_NUM_0, k12: k.VK_NUM_PLUS
+            }
+        ],
+
         joystickGamepads: [
             {
                 button:        0,
                 buttonT:       1,
-                select:        8,
-                reset:         9,
-                pause:         4,
-                fastSpeed:     7,
-                slowSpeed:     6,
+                // Disabled (-1 = never matches any real gamepad.buttons
+                // index, see Joystick.getButtonDigital in
+                // GamepadConsoleControls.js) - these defaults collided
+                // directly with a Keyboard/Keypad Controller USB adapter's
+                // own button layout (buttons 1-12, see that same file's
+                // updateKeypad), toggling Select/Reset and pausing the game
+                // instead of registering keypad key presses, confirmed as a
+                // real reported bug. Keypad mode's own updateKeypad() path
+                // never reaches this file's prefs at all regardless (it
+                // returns before select/reset/pause/fastSpeed/slowSpeed are
+                // ever read) - disabled here too anyway, at the user's own
+                // explicit direction, as a second, independent layer: an
+                // ordinary gamepad used for Player controls (keypad mode
+                // OFF) no longer has ANY of its buttons double as
+                // console-wide shortcuts by default either.
+                select:        -1,
+                reset:         -1,
+                pause:         -1,
+                fastSpeed:     -1,
+                slowSpeed:     -1,
                 device:        -1,  // -1 = auto
                 xAxis:         0,
                 xAxisSig:      1,
@@ -52,11 +95,26 @@ Javatari.userPreferences.defaults = function() {
             }, {
                 button:        0,
                 buttonT:       1,
-                select:        8,
-                reset:         9,
-                pause:         4,
-                fastSpeed:     7,
-                slowSpeed:     6,
+                // Disabled (-1 = never matches any real gamepad.buttons
+                // index, see Joystick.getButtonDigital in
+                // GamepadConsoleControls.js) - these defaults collided
+                // directly with a Keyboard/Keypad Controller USB adapter's
+                // own button layout (buttons 1-12, see that same file's
+                // updateKeypad), toggling Select/Reset and pausing the game
+                // instead of registering keypad key presses, confirmed as a
+                // real reported bug. Keypad mode's own updateKeypad() path
+                // never reaches this file's prefs at all regardless (it
+                // returns before select/reset/pause/fastSpeed/slowSpeed are
+                // ever read) - disabled here too anyway, at the user's own
+                // explicit direction, as a second, independent layer: an
+                // ordinary gamepad used for Player controls (keypad mode
+                // OFF) no longer has ANY of its buttons double as
+                // console-wide shortcuts by default either.
+                select:        -1,
+                reset:         -1,
+                pause:         -1,
+                fastSpeed:     -1,
+                slowSpeed:     -1,
                 device:        -1,  // -1 = auto
                 xAxis:         0,
                 xAxisSig:      1,
@@ -127,6 +185,11 @@ Javatari.userPreferences.load = function() {
 
 Javatari.userPreferences.setDefaultJoystickKeys = function() {
     Javatari.userPreferences.current.joystickKeys = Javatari.userPreferences.defaults().joystickKeys;
+    Javatari.userPreferences.setDirty();
+};
+
+Javatari.userPreferences.setDefaultKeypadKeys = function() {
+    Javatari.userPreferences.current.keypadKeys = Javatari.userPreferences.defaults().keypadKeys;
     Javatari.userPreferences.setDirty();
 };
 

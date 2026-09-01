@@ -157,6 +157,13 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
                 });
             })(elem);
         }
+        for (var kdElem in keypadControlKeysElements) {
+            (function(localControl) {
+                jt.Util.onTapOrMouseDownWithBlock(self[localControl], function () {
+                    keyRedefinitionStart(localControl);
+                });
+            })(kdElem);
+        }
 
         // Controls Actions
         jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-paddles-mode"], function() { consoleControls.togglePaddleMode(); });
@@ -213,6 +220,29 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
                 }
             }
         }
+
+        // Same rendering, for the Keyboard/Keypad Controller's own 12x2
+        // keys (see keypadControlKeysElements' own comment).
+        var keypadKeys = prefs.keypadKeys;
+        for (var keypadElem in keypadControlKeysElements) {
+            var kdElemNode = self[keypadElem];
+            if (keypadElem === controlRedefining) {
+                kdElemNode.classList.add("jt-redefining");
+                kdElemNode.classList.remove("jt-undefined");
+                kdElemNode.innerHTML = "?";
+            } else {
+                kdElemNode.classList.remove("jt-redefining");
+                var kdControlInfo = keypadControlKeysElements[keypadElem];
+                var kdKeyInfo = keypadKeys[kdControlInfo.player][kdControlInfo.control];
+                if (kdKeyInfo.c === jt.DOMKeys.VK_VOID.c) {
+                    kdElemNode.classList.add("jt-undefined");
+                    kdElemNode.innerHTML = "";
+                } else {
+                    kdElemNode.classList.remove("jt-undefined");
+                    kdElemNode.innerHTML = kdKeyInfo.n;
+                }
+            }
+        }
     }
 
     function processKeyEvent(e, press) {
@@ -234,20 +264,45 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
         refreshPortsPage();
     };
 
+    // Shared by both controlKeysElements (joystick) and
+    // keypadControlKeysElements (keypad) - clears newKey away from EVERY
+    // OTHER binding across BOTH maps, not just whichever one
+    // controlRedefining itself belongs to. Necessary because both actually
+    // share the exact same runtime keyCodeMap (see DOMConsoleControls.js's
+    // own initKeys) - a joystick key and a keypad key silently fighting
+    // over the same physical key would otherwise just be whichever one
+    // initKeys happened to assign last, with no indication in this dialog
+    // that anything was wrong.
+    var clearKeyEverywhere = function(newKeyCode, exceptControl) {
+        var con;
+        for (con in controlKeysElements) {
+            if (con === exceptControl) continue;
+            var info = controlKeysElements[con];
+            var keys = prefs.joystickKeys[info.player];
+            if (keys[info.control].c === newKeyCode) keys[info.control] = jt.DOMKeys.VK_VOID;
+        }
+        for (con in keypadControlKeysElements) {
+            if (con === exceptControl) continue;
+            var kdInfo = keypadControlKeysElements[con];
+            var kdKeys = prefs.keypadKeys[kdInfo.player];
+            if (kdKeys[kdInfo.control].c === newKeyCode) kdKeys[kdInfo.control] = jt.DOMKeys.VK_VOID;
+        }
+    };
+
     var keyRedefinitionTry = function (e) {
         if (!controlRedefining) return;
         var c = jt.DOMKeys.codeForKeyboardEvent(e);
         var n = jt.DOMKeys.nameForKeyboardEventSingle(e);
         if (c === jt.DOMKeys.VK_VOID.c || !n) return;
         var newKey = { c: c, n: n };
+        clearKeyEverywhere(newKey.c, controlRedefining);
         var controlInfo = controlKeysElements[controlRedefining];
-        var keys = prefs.joystickKeys;
-        for (var con in controlKeysElements) {
-            var otherControlInfo = controlKeysElements[con];
-            if (con !== controlRedefining && keys[otherControlInfo.player][otherControlInfo.control].c === newKey.c)
-                keys[otherControlInfo.player][otherControlInfo.control] = jt.DOMKeys.VK_VOID;
+        if (controlInfo) {
+            prefs.joystickKeys[controlInfo.player][controlInfo.control] = newKey;
+        } else {
+            var kdControlInfo = keypadControlKeysElements[controlRedefining];
+            prefs.keypadKeys[kdControlInfo.player][kdControlInfo.control] = newKey;
         }
-        keys[controlInfo.player][controlInfo.control] = newKey;
         Javatari.userPreferences.setDirty();
         keyRedefinitonStop();
     };
@@ -259,6 +314,7 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
 
     var controlsDefaults = function () {
         Javatari.userPreferences.setDefaultJoystickKeys();
+        Javatari.userPreferences.setDefaultKeypadKeys();
         keyRedefinitonStop();   // will refresh
     };
 
@@ -286,6 +342,20 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
         "jt-control-p2-right":   { player: 1, control: "right" },
         "jt-control-p2-down":    { player: 1, control: "down" }
     };
+
+    // Same shape as controlKeysElements above, for the 12-key Keyboard/
+    // Keypad Controller (see prefs.keypadKeys' own comment in
+    // UserPreferences.js) - kept as its own separate map (not merged into
+    // controlKeysElements) since it reads/writes a different prefs object
+    // (prefs.keypadKeys, not prefs.joystickKeys) - every function below
+    // that needs to tell the two apart just checks which map an element id
+    // is actually in.
+    var keypadControlKeysElements = {};
+    for (var kdp = 0; kdp < 2; kdp++) {
+        for (var kdk = 1; kdk <= 12; kdk++) {
+            keypadControlKeysElements["jt-keypad-p" + kdp + "-k" + kdk] = { player: kdp, control: "k" + kdk };
+        }
+    }
 
 
     var controlRedefining = null;

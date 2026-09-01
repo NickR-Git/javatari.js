@@ -567,22 +567,19 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
         turboKeyCodeMap[prefs.joystickKeys[a].buttonT.c] = cc.JOY0_BUTTON;
         turboKeyCodeMap[prefs.joystickKeys[b].buttonT.c] = cc.JOY1_BUTTON;
 
-        // Keyboard/Keypad Controller - the plain (unmodified) number row,
-        // read in the SAME 1,2,3/4,5,6/7,8,9/*,0,# order ConsoleControls'
-        // own KEYPAD0_KEY_N numbering documents. Free to use unmodified:
-        // every existing binding on these same physical keys above (save
-        // states) requires CONTROL or ALT, so a bare digit press has never
-        // meant anything until now. Bound to KEYPAD${a}_KEY_* (not always
+        // Keyboard/Keypad Controller - remappable the same way joystick keys
+        // above are (see prefs.keypadKeys' own comment in UserPreferences.js
+        // and Settings.js's own keyRedefinitionTry), read in the SAME
+        // 1,2,3/4,5,6/7,8,9/*,0,# order ConsoleControls' own KEYPAD0_KEY_N
+        // numbering documents. Bound to KEYPAD${a}_KEY_* (not always
         // KEYPAD0_*) so P1 Controls Mode's existing left/right swap (the
         // same "a"/"b" this function already uses for JOY0 vs JOY1) applies
         // here too - whichever port is currently "yours" as player 1 is the
-        // one your own keyboard drives.
-        var KEYPAD_KEYS = [
-            jt.DOMKeys.VK_1.c, jt.DOMKeys.VK_2.c, jt.DOMKeys.VK_3.c,
-            jt.DOMKeys.VK_4.c, jt.DOMKeys.VK_5.c, jt.DOMKeys.VK_6.c,
-            jt.DOMKeys.VK_7.c, jt.DOMKeys.VK_8.c, jt.DOMKeys.VK_9.c,
-            jt.DOMKeys.VK_MINUS.c, jt.DOMKeys.VK_0.c, jt.DOMKeys.VK_EQUALS.c,
-        ];
+        // one your own keyboard drives. A key bound to VK_VOID (unassigned,
+        // e.g. after a user clears it in Settings) is deliberately skipped -
+        // keyCodeMap[-1] would otherwise claim that slot and swallow every
+        // OTHER as-yet-unbound key redefinition attempt in Settings' own
+        // "press a key" flow.
         var KEYPAD_A_CONTROLS = [
             cc.KEYPAD0_KEY_1, cc.KEYPAD0_KEY_2, cc.KEYPAD0_KEY_3, cc.KEYPAD0_KEY_4,
             cc.KEYPAD0_KEY_5, cc.KEYPAD0_KEY_6, cc.KEYPAD0_KEY_7, cc.KEYPAD0_KEY_8,
@@ -593,8 +590,12 @@ jt.DOMConsoleControls = function(room, keyForwardControls) {
             cc.KEYPAD1_KEY_5, cc.KEYPAD1_KEY_6, cc.KEYPAD1_KEY_7, cc.KEYPAD1_KEY_8,
             cc.KEYPAD1_KEY_9, cc.KEYPAD1_KEY_10, cc.KEYPAD1_KEY_11, cc.KEYPAD1_KEY_12,
         ];
+        var keypadAKeys = prefs.keypadKeys[a];
         var keypadAControls = a === 0 ? KEYPAD_A_CONTROLS : KEYPAD_B_CONTROLS;
-        for (var kp = 0; kp < 12; kp++) keyCodeMap[KEYPAD_KEYS[kp]] = keypadAControls[kp];
+        for (var kp = 1; kp <= 12; kp++) {
+            var keyInfo = keypadAKeys["k" + kp];
+            if (keyInfo.c !== jt.DOMKeys.VK_VOID.c) keyCodeMap[keyInfo.c] = keypadAControls[kp - 1];
+        }
     };
 
 
