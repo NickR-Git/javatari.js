@@ -62,8 +62,19 @@ jt.GamepadConsoleControls = function(consoleControls) {
     // Atari-keypad-to-USB-gamepad adapter's buttons 9 and 10 collided with
     // the default SELECT/RESET button indices, toggling console switches
     // and pausing the game instead of registering as keypad key presses).
+    // No "if (!supported) return;" guard (unlike setPaddleMode above) -
+    // "supported" only gets set inside powerOn() below, which a caller
+    // (e.g. VCS Game Maker's own rom.js, right after loading a compiled
+    // ROM) has no guaranteed ordering against; calling this before the
+    // console's very first powerOn() would otherwise silently and
+    // PERMANENTLY drop the request (nothing re-applies it once powerOn()
+    // finally does run - confirmed as a real reported bug: keypad mode
+    // never actually turned on, no matter how many times it was
+    // requested). Simply storing the flag regardless is always safe -
+    // controlsClockPulse below already independently bails out on
+    // "!supported" before ever reading it, so an unsupported browser still
+    // behaves exactly as before.
     this.setKeypadMode = function(state) {
-        if (!supported) return;
         keypadMode = state;
     };
 
