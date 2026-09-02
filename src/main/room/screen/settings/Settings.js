@@ -173,6 +173,8 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
         }
         jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-input-keyboard"], function() { toggleKeypadInputMode("KEYBOARD"); });
         jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-input-gamepad"], function() { toggleKeypadInputMode("GAMEPAD"); });
+        jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-gpdevice0"], function() { cycleGamepadDevice(0); });
+        jt.Util.onTapOrMouseDownWithBlock(self["jt-keypad-gpdevice1"], function() { cycleGamepadDevice(1); });
 
         // Controls Actions
         jt.Util.onTapOrMouseDownWithBlock(self["jt-ports-paddles-mode"], function() { consoleControls.cycleControllerMode(); });
@@ -313,6 +315,15 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
         self["jt-keypad-gamepad-grids"].style.display = keypadInputMode === "GAMEPAD" ? "" : "none";
         self["jt-keypad-input-keyboard"].style.textDecoration = keypadInputMode === "KEYBOARD" ? "underline" : "none";
         self["jt-keypad-input-gamepad"].style.textDecoration = keypadInputMode === "GAMEPAD" ? "underline" : "none";
+
+        // Which physical gamepad index feeds each player's keypad (see
+        // cycleGamepadDevice's own comment) - shown regardless of whether
+        // the Gamepad sub-view is the one currently visible, so switching
+        // to it doesn't require a separate refresh to see the right value.
+        var device0 = prefs.joystickGamepads[0].device;
+        var device1 = prefs.joystickGamepads[1].device;
+        self["jt-keypad-gpdevice0"].innerHTML = "Device: " + (device0 < 0 ? "AUTO" : device0);
+        self["jt-keypad-gpdevice1"].innerHTML = "Device: " + (device1 < 0 ? "AUTO" : device1);
     }
 
     function processKeyEvent(e, press) {
@@ -457,6 +468,43 @@ jt.SettingsDialog = function(parentElement, consoleControls) {
     var toggleKeypadInputMode = function(mode) {
         keypadInputMode = mode;
         keyRedefinitonStop();   // cancels any in-progress redefinition and refreshes
+    };
+
+    // Which physical gamepad (by navigator.getGamepads() index) drives this
+    // player's keypad - same prefs.joystickGamepads[player].device field
+    // Joysticks/Paddles already use (there's only ever ONE gamepad-shaped
+    // peripheral connected to a given player slot at a time, regardless of
+    // which of the three "Controllers:" modes is currently selected), just
+    // not previously reachable from any UI - only by editing preferences
+    // directly. Needed because auto-detection (-1) isn't always reliable:
+    // confirmed as a real reported case where a single physical adapter
+    // enumerated as TWO separate gamepad entries (one that never actually
+    // reports any button activity), and auto-detection happened to grab the
+    // inactive one for Player 1 while the real button data was arriving on
+    // the OTHER entry the whole time. Cycles AUTO -> 0 -> 1 -> 2 -> 3 ->
+    // AUTO - four fixed slots is enough for this to be a quick way to try
+    // "the other one(s)" without needing to know or guess the real index
+    // ahead of time.
+    var cycleGamepadDevice = function(player) {
+        var current = prefs.joystickGamepads[player].device;
+        prefs.joystickGamepads[player].device = current >= 3 ? -1 : current + 1;
+        Javatari.userPreferences.setDirty();
+        // Device reassignment only takes effect on the NEXT detection pass,
+        // which only ever runs while a player's own joystick slot is
+        // currently null (see GamepadConsoleControls' own
+        // detectNewJoystick) - toggleGamepadMode's own 3-state cycle
+        // (AUTO -> AUTO SWAPPED -> DISABLED -> AUTO -> ...) always returns
+        // to whichever state it started from after exactly 3 calls,
+        // regardless of which of the three it happened to start on, and
+        // passes through DISABLED along the way - the one state that
+        // actually nulls out both joystick slots (see GamepadConsoleControls'
+        // own toggleMode), forcing them to re-detect from scratch with the
+        // newly assigned device index instead of silently keeping whatever
+        // they'd already latched onto.
+        consoleControls.toggleGamepadMode();
+        consoleControls.toggleGamepadMode();
+        consoleControls.toggleGamepadMode();
+        refreshPortsPage();
     };
 
     var controlsRevert = function () {
