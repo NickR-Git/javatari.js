@@ -38,18 +38,18 @@ Javatari.userPreferences.defaults = function() {
         // already goes through) and same remapping mechanism (see Settings.js's
         // own keyRedefinitionTry) as joystickKeys above - just 12 keys
         // instead of 4 directions + 2 buttons. Player 1 defaults to the
-        // plain top-row number keys (free to bind here: every existing use
-        // of these same physical keys elsewhere in this file requires
-        // CONTROL or ALT); Player 2 defaults to the numeric keypad, since a
-        // second physical Keyboard/Keypad Controller is far more likely to
-        // be operated from there than by fighting Player 1 for the same
-        // top-row keys.
+        // 1/2/3, Q/W/E, A/S/D, Z/X/C block (free to bind here: every
+        // existing use of these same physical keys elsewhere in this file
+        // requires CONTROL or ALT); Player 2 defaults to the numeric
+        // keypad, since a second physical Keyboard/Keypad Controller is far
+        // more likely to be operated from there than by fighting Player 1
+        // for the same keys.
         keypadKeys: [
             {
                 k1: k.VK_1, k2: k.VK_2, k3: k.VK_3,
-                k4: k.VK_4, k5: k.VK_5, k6: k.VK_6,
-                k7: k.VK_7, k8: k.VK_8, k9: k.VK_9,
-                k10: k.VK_MINUS, k11: k.VK_0, k12: k.VK_EQUALS
+                k4: k.VK_Q, k5: k.VK_W, k6: k.VK_E,
+                k7: k.VK_A, k8: k.VK_S, k9: k.VK_D,
+                k10: k.VK_Z, k11: k.VK_X, k12: k.VK_C
             }, {
                 k1: k.VK_NUM_1, k2: k.VK_NUM_2, k3: k.VK_NUM_3,
                 k4: k.VK_NUM_4, k5: k.VK_NUM_5, k6: k.VK_NUM_6,
